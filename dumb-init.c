@@ -45,6 +45,7 @@ char signal_temporary_ignores[MAXSIG + 1] = {[0 ... MAXSIG] = 0};
 pid_t child_pid = -1;
 char debug = 0;
 char use_setsid = 1;
+int spawn_delay_seconds = 0;
 
 int translate_signal(int signum) {
     if (signum <= 0 || signum > MAXSIG) {
@@ -133,15 +134,16 @@ void print_help(char *argv[]) {
         "It is designed to run as PID1 in minimal container environments.\n"
         "\n"
         "Optional arguments:\n"
-        "   -c, --single-child   Run in single-child mode.\n"
-        "                        In this mode, signals are only proxied to the\n"
-        "                        direct child and not any of its descendants.\n"
-        "   -r, --rewrite s:r    Rewrite received signal s to new signal r before proxying.\n"
-        "                        To ignore (not proxy) a signal, rewrite it to 0.\n"
-        "                        This option can be specified multiple times.\n"
-        "   -v, --verbose        Print debugging information to stderr.\n"
-        "   -h, --help           Print this help message and exit.\n"
-        "   -V, --version        Print the current version and exit.\n"
+        "   -s, --spawn-delay-seconds      How many seconds to delay spawning of the child process.\n"
+        "   -c, --single-child             Run in single-child mode.\n"
+        "                                  In this mode, signals are only proxied to the\n"
+        "                                  direct child and not any of its descendants.\n"
+        "   -r, --rewrite s:r              Rewrite received signal s to new signal r before proxying.\n"
+        "                                  To ignore (not proxy) a signal, rewrite it to 0.\n"
+        "                                  This option can be specified multiple times.\n"
+        "   -v, --verbose                  Print debugging information to stderr.\n"
+        "   -h, --help                     Print this help message and exit.\n"
+        "   -V, --version                  Print the current version and exit.\n"
         "\n"
         "Full help is available online at https://github.com/Yelp/dumb-init\n",
         VERSION,
@@ -174,6 +176,22 @@ void parse_rewrite_signum(char *arg) {
     }
 }
 
+void print_spawn_delay_seconds_help() {
+    fprintf(
+        stderr,
+        "Usage: -s option accepts a single positive integer.\n"
+        "Use --help for full usage.\n"
+    );
+    exit(1);
+}
+
+void parse_spawn_delay_seconds(char *arg) {
+    if (sscanf(arg, "%d", &spawn_delay_seconds) != 1) {
+        print_spawn_delay_seconds_help();
+    }
+}
+
+
 void set_rewrite_to_sigstop_if_not_defined(int signum) {
     if (signal_rewrite[signum] == -1) {
         signal_rewrite[signum] = SIGSTOP;
@@ -183,12 +201,13 @@ void set_rewrite_to_sigstop_if_not_defined(int signum) {
 char **parse_command(int argc, char *argv[]) {
     int opt;
     struct option long_options[] = {
-        {"help",         no_argument,       NULL, 'h'},
-        {"single-child", no_argument,       NULL, 'c'},
-        {"rewrite",      required_argument, NULL, 'r'},
-        {"verbose",      no_argument,       NULL, 'v'},
-        {"version",      no_argument,       NULL, 'V'},
-        {NULL,                     0,       NULL,   0},
+        {"help",                no_argument,       NULL, 'h'},
+        {"single-child",        no_argument,       NULL, 'c'},
+        {"rewrite",             required_argument, NULL, 'r'},
+        {"spawn_delay_seconds", required_argument, NULL, 's'},
+        {"verbose",             no_argument,       NULL, 'v'},
+        {"version",             no_argument,       NULL, 'V'},
+        {NULL,                  0,                 NULL,   0},
     };
     while ((opt = getopt_long(argc, argv, "+hvVcr:", long_options, NULL)) != -1) {
         switch (opt) {
@@ -206,6 +225,9 @@ char **parse_command(int argc, char *argv[]) {
                 break;
             case 'r':
                 parse_rewrite_signum(optarg);
+                break;
+            case 's':
+                parse_spawn_delay_seconds(optarg);
                 break;
             default:
                 exit(1);
@@ -292,6 +314,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    usleep(spawn_delay_seconds * 1000 * 1000);
     child_pid = fork();
     if (child_pid < 0) {
         PRINTERR("Unable to fork. Exiting.\n");

@@ -1,6 +1,7 @@
 """Sanity checks for command-line options."""
 import re
 import signal
+import timeit
 from subprocess import PIPE
 from subprocess import Popen
 
@@ -51,22 +52,39 @@ def test_help_message(flag, current_version):
         b'It is designed to run as PID1 in minimal container environments.\n'
         b'\n'
         b'Optional arguments:\n'
-        b'   -c, --single-child   Run in single-child mode.\n'
-        b'                        In this mode, signals are only proxied to the\n'
-        b'                        direct child and not any of its descendants.\n'
-        b'   -r, --rewrite s:r    Rewrite received signal s to new signal r before proxying.\n'
-        b'                        To ignore (not proxy) a signal, rewrite it to 0.\n'
-        b'                        This option can be specified multiple times.\n'
-        b'   -v, --verbose        Print debugging information to stderr.\n'
-        b'   -h, --help           Print this help message and exit.\n'
-        b'   -V, --version        Print the current version and exit.\n'
+        b'   -s, --spawn-delay-seconds      How many seconds to delay spawning of the child process.\n'
+        b'   -c, --single-child             Run in single-child mode.\n'
+        b'                                  In this mode, signals are only proxied to the\n'
+        b'                                  direct child and not any of its descendants.\n'
+        b'   -r, --rewrite s:r              Rewrite received signal s to new signal r before proxying.\n'
+        b'                                  To ignore (not proxy) a signal, rewrite it to 0.\n'
+        b'                                  This option can be specified multiple times.\n'
+        b'   -v, --verbose                  Print debugging information to stderr.\n'
+        b'   -h, --help                     Print this help message and exit.\n'
+        b'   -V, --version                  Print the current version and exit.\n'
         b'\n'
         b'Full help is available online at https://github.com/Yelp/dumb-init\n'
     )
 
 
-@pytest.mark.parametrize('flag', ['-V', '--version'])
+@pytest.mark.parametrize('flag', ['-s', '--spawn-delay-seconds'])
 @pytest.mark.usefixtures('both_debug_modes', 'both_setsid_modes')
+def test_spawn_delay_seconds(flag, current_version):
+    """dumb-init should delay spawning of the child process by n seconds when asked to."""
+
+    start = timeit.default_timer()
+    proc = Popen(('dumb-init', flag, '2', 'echo', 'hi'), stderr=PIPE)
+    _, stderr = proc.communicate()
+    end = timeit.default_timer()
+    assert proc.returncode == 0
+    assert stdout == b'hi\n'
+
+    # This is certainly not perfect
+    assert end - start > 2
+    assert end - start < 3
+
+
+@pytest.mark.parametrize('flag', ['-V', '--version'])
 def test_version_message(flag, current_version):
     """dumb-init should print its version when asked to."""
 
